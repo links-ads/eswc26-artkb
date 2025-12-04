@@ -1,0 +1,56 @@
+name: art-kb
+services:
+  graphdb:
+    image: ontotext/graphdb:11.1.2
+    container_name: art-kb-graphdb-${BUILD_TARGET}
+    volumes:
+      - ./graphdb_data:/opt/graphdb/home
+    environment:
+      GRAPHDB_HOME: /opt/graphdb/home
+    command: [
+      "-Dgraphdb.home=/opt/graphdb/home",
+      "-Dgraphdb.external-url=${GRAPHDB_EXT_URL:-/}", 
+      "-Dgraphdb.graphql.enabled=true"
+    ]
+
+  minio:
+    image: minio/minio
+    container_name: art-kb-minio-${BUILD_TARGET}
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_EXT_URL:-/}
+    command: server --console-address ":9090" /data
+  qdrant:
+    image: qdrant/qdrant
+    container_name: art-kb-qdrant-${BUILD_TARGET}
+    volumes:
+      - ./data:/qdrant/storage # Volume per la persistenza dei dati
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+  backend:
+    build:
+        context: ..
+        dockerfile: containers/backend/Dockerfile
+    container_name: art-kb-backend-${BUILD_TARGET}
+    image: ghcr.io/links-ads/art-kb-backend-latest
+    env_file:
+        - ../envs/${BUILD_TARGET}.env
+    environment:
+        LOG_LEVEL: ${API_LOG_LEVEL}
+        WORKERS: ${API_WORKERS}
+        TIMEOUT: 300
+  boot:
+    build:
+        context: ..
+        dockerfile: containers/boot/Dockerfile
+    container_name: art-kb-boot
+    image: ghcr.io/links-ads/kg-boot-latest
+    env_file:
+        - ../envs/${BUILD_TARGET}.env
+    depends_on:
+        - minio
+        - graphdb
+        - qdrant
+    profiles:
+      - boot
